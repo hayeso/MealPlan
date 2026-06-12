@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Satoshi", system-ui, sans-serif;
+  --font-display: "Instrument Serif", Georgia, serif;
+
+  --color-bg: #f7f6f2;
+  --color-surface: #f9f8f5;
+  --color-surface-elevated: #ffffff;
+  --color-accent: #01696f;
+  --color-accent-hover: #015a5f;
+  --color-text: #28251d;
+  --color-muted: #7a7974;
+  --color-border: #e8e6e0;
+  --color-success: #5a7a5e;
+  --color-success-bg: #eef4ef;
+  --color-warning: #b8860b;
+  --color-warning-bg: #fef6e4;
+  --color-danger: #c44;
+}
+
+.dark {
+  --color-bg: #1a1916;
+  --color-surface: #22211e;
+  --color-surface-elevated: #2a2925;
+  --color-accent: #2aaeb6;
+  --color-accent-hover: #3bc4cc;
+  --color-text: #f0efe9;
+  --color-muted: #a09e97;
+  --color-border: #3a3935;
+  --color-success: #7aab7e;
+  --color-success-bg: #1e2a20;
+  --color-warning: #d4a843;
+  --color-warning-bg: #2a2418;
+  --color-danger: #e66;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
