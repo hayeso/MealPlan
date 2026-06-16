@@ -87,7 +87,52 @@ Create `backend/.env`:
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/mealplan
 OPENAI_API_KEY=sk-...
 DEBUG=true
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+JWT_SECRET=generate-a-long-random-string
+ALLOWED_EMAIL=hayeson@gmail.com
 ```
+
+Create `.env` in the project root for the frontend:
+
+```env
+VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+VITE_OPENROUTER_API_KEY=your-key-here
+```
+
+Use the **same** Google OAuth client ID in both files. Sign-in is restricted to `hayeson@gmail.com` on the server.
+
+### Google OAuth setup
+
+1. Open [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Create an **OAuth 2.0 Client ID** (Web application)
+3. Add authorized JavaScript origins:
+   - `http://localhost:5173` (local dev)
+   - `https://your-production-url.onrender.com` (after deploy)
+4. Copy the client ID into `GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID`
+
+## Deploy to the web (Render)
+
+The repo includes a production `Dockerfile` (builds the React app + serves it from FastAPI) and `render.yaml`.
+
+1. Push this repo to GitHub
+2. In [Render](https://render.com), create a **Blueprint** from `render.yaml`
+3. Set these environment variables on the web service:
+   - `GOOGLE_CLIENT_ID` — your Google OAuth client ID
+   - `VITE_GOOGLE_CLIENT_ID` — same value (used at Docker build time)
+   - `OPENAI_API_KEY` — your OpenAI / OpenRouter key
+   - `CORS_ORIGINS` — your Render URL, e.g. `https://mealplan-xxxx.onrender.com`
+4. After the first deploy, add that same URL to Google OAuth authorized origins
+5. Open the Render URL and sign in with `hayeson@gmail.com`
+
+Local production-like test:
+
+```bash
+docker compose up --build
+```
+
+Then visit `http://localhost:8000`.
+
+**TikTok / Instagram import:** paste a post URL on the Import page. Tier 2 video extraction (audio transcription + on-screen text) requires [ffmpeg](https://ffmpeg.org/) on your PATH. For Instagram reliability, export browser cookies to a Netscape-format file and set `INSTAGRAM_COOKIES_FILE` in `backend/.env`.
 
 ## API Documentation
 

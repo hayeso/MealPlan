@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.cursor
+.claude
+.planning
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/.env
+.env
+*.md

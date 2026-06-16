@@ -10,3 +10,9 @@ pytesseract
 opencv-python-headless
 python-multipart
 pydantic-settings
+google-auth
+PyJWT
+requests
+yt-dlp
+pytest
+pytest-asyncio

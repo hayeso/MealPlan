@@ -19,6 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from ..models.meal_plan import MealPlan, MealPlanSlot
 from ..models.recipe import Recipe, RecipeStep, StepIngredient
+from .prep_notes import include_cook_ahead_step, is_batch_prep_ingredient, normalize_prep_note
 from .quantity_formatter import format_quantity, format_quantity_totals
 
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -55,6 +56,9 @@ class CookAheadRecipe:
 class PrepGuide:
     raw_prep: list[RawPrepTask]
     cook_ahead: list[CookAheadRecipe]
+    container_summaries: list[dict] = field(default_factory=list)
+    container_strategy: str = "heuristic"
+    container_warnings: list[dict] = field(default_factory=list)
 
 
 async def generate_prep_guide(plan_id: uuid.UUID, db: AsyncSession) -> PrepGuide:
@@ -73,13 +77,16 @@ async def generate_prep_guide(plan_id: uuid.UUID, db: AsyncSession) -> PrepGuide
     if not plan:
         return PrepGuide(raw_prep=[], cook_ahead=[])
 
+    from ..config import settings as app_settings
+    from .container_grouper import assign_batch_containers, container_label
+
     container_counter = 0
 
     def next_container() -> str:
         nonlocal container_counter
-        label = chr(65 + container_counter)
+        label = container_label(container_counter)
         container_counter += 1
-        return f"Container {label}"
+        return label
 
     # ---- SECTION 1: RAW PREP ----
     # Group by (ingredient_name, prep_note) across all raw_prep steps
@@ -93,10 +100,11 @@ async def generate_prep_guide(plan_id: uuid.UUID, db: AsyncSession) -> PrepGuide
         scale = (slot.servings_override / recipe.servings) if slot.servings_override else 1.0
 
         for step in recipe.steps:
-            if step.step_type != "raw_prep":
-                continue
             for si in step.step_ingredients:
-                key = (si.ingredient.name, si.prep_note)
+                if not is_batch_prep_ingredient(step.step_type, si.prep_note):
+                    continue
+                prep_key = normalize_prep_note(si.prep_note)
+                key = (si.ingredient.name, prep_key)
                 prep_groups[key].append({
                     "recipe_name": recipe.name,
                     "day": day,
@@ -104,18 +112,34 @@ async def generate_prep_guide(plan_id: uuid.UUID, db: AsyncSession) -> PrepGuide
                     "unit": si.unit,
                 })
 
+    def _merge_usages(usages: list[dict]) -> list[dict]:
+        """Merge duplicate recipe/day rows (same ingredient split across steps)."""
+        merged: dict[tuple[str, str], dict] = {}
+        for u in usages:
+            key = (u["recipe_name"], u["day"])
+            if key not in merged:
+                merged[key] = dict(u)
+                continue
+            existing = merged[key]
+            if u["quantity"] is not None:
+                if existing["quantity"] is None:
+                    existing["quantity"] = u["quantity"]
+                elif existing["unit"] == u["unit"]:
+                    existing["quantity"] += u["quantity"]
+        return list(merged.values())
+
     raw_prep_tasks: list[RawPrepTask] = []
     for (ingredient, prep_note), usages in sorted(prep_groups.items()):
+        merged = _merge_usages(usages)
         total_str = format_quantity_totals(
-            [(u["quantity"], u["unit"]) for u in usages]
+            [(u["quantity"], u["unit"]) for u in merged]
         )
 
         portions: list[ContainerPortion] = []
-        for u in usages:
-            container = next_container()
+        for u in merged:
             qty_str = format_quantity(u["quantity"], u["unit"])
             portions.append(ContainerPortion(
-                container=container,
+                container="",  # assigned after AI/heuristic grouping
                 amount=qty_str,
                 recipe_name=u["recipe_name"],
                 day=u["day"],
@@ -127,6 +151,14 @@ async def generate_prep_guide(plan_id: uuid.UUID, db: AsyncSession) -> PrepGuide
             total_quantity=total_str,
             portions=portions,
         ))
+
+    container_summaries, container_strategy, container_counter, container_warnings = (
+        await assign_batch_containers(
+            plan,
+            raw_prep_tasks,
+            use_ai=app_settings.container_grouping_ai,
+        )
+    )
 
     # ---- SECTION 2: COOK AHEAD ----
     cook_ahead_recipes: list[CookAheadRecipe] = []
@@ -142,35 +174,30 @@ async def generate_prep_guide(plan_id: uuid.UUID, db: AsyncSession) -> PrepGuide
         scale = servings / recipe.servings
 
         cook_steps = []
+        max_step = max((s.step_number for s in recipe.steps), default=0)
         for step in recipe.steps:
-            if recipe.make_ahead_type == "full" and step.step_type in ("cook_ahead", "raw_prep"):
-                ings = []
-                for si in step.step_ingredients:
-                    q = si.quantity * scale if si.quantity else None
-                    ings.append({
-                        "name": si.ingredient.name,
-                        "quantity": format_quantity(q, si.unit),
-                        "prep_note": si.prep_note,
-                    })
-                cook_steps.append({
-                    "step_number": step.step_number,
-                    "instruction": step.instruction,
-                    "ingredients": ings,
+            is_last = step.step_number == max_step
+            if not include_cook_ahead_step(
+                recipe.make_ahead_type,
+                step.step_type,
+                step.instruction,
+                step.can_cook_ahead,
+                is_last,
+            ):
+                continue
+            ings = []
+            for si in step.step_ingredients:
+                q = si.quantity * scale if si.quantity else None
+                ings.append({
+                    "name": si.ingredient.name,
+                    "quantity": format_quantity(q, si.unit),
+                    "prep_note": si.prep_note,
                 })
-            elif recipe.make_ahead_type == "partial" and step.can_cook_ahead:
-                ings = []
-                for si in step.step_ingredients:
-                    q = si.quantity * scale if si.quantity else None
-                    ings.append({
-                        "name": si.ingredient.name,
-                        "quantity": format_quantity(q, si.unit),
-                        "prep_note": si.prep_note,
-                    })
-                cook_steps.append({
-                    "step_number": step.step_number,
-                    "instruction": step.instruction,
-                    "ingredients": ings,
-                })
+            cook_steps.append({
+                "step_number": step.step_number,
+                "instruction": step.instruction,
+                "ingredients": ings,
+            })
 
         if cook_steps:
             container = next_container()
@@ -184,4 +211,21 @@ async def generate_prep_guide(plan_id: uuid.UUID, db: AsyncSession) -> PrepGuide
                 steps=cook_steps,
             ))
 
-    return PrepGuide(raw_prep=raw_prep_tasks, cook_ahead=cook_ahead_recipes)
+    return PrepGuide(
+        raw_prep=raw_prep_tasks,
+        cook_ahead=cook_ahead_recipes,
+        container_summaries=[
+            {
+                "container": s.container,
+                "description": s.description,
+                "recipe_name": s.recipe_name,
+                "day": s.day,
+                "ingredients": s.ingredients,
+                "prep_phase": s.prep_phase,
+                "storage_rationale": s.storage_rationale,
+            }
+            for s in container_summaries
+        ],
+        container_strategy=container_strategy,
+        container_warnings=container_warnings,
+    )

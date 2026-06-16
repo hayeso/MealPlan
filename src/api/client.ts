@@ -1,7 +1,18 @@
-const API_BASE = 'http://localhost:8000'
+import { getStoredAuthToken } from '../context/AuthContext'
+
+const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, options)
+  const token = getStoredAuthToken()
+  const headers = new Headers(options?.headers)
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  if (options?.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
   if (!res.ok) {
     const body = await res.text()
     throw new Error(`API ${res.status}: ${body}`)

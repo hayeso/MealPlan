@@ -176,9 +176,27 @@ export interface CookAheadRecipe {
   steps: CookAheadStep[]
 }
 
+export interface ContainerSummary {
+  container: string
+  description: string
+  recipe_name: string
+  day: string
+  ingredients: string[]
+  prep_phase?: string | null
+  storage_rationale?: string | null
+}
+
+export interface ContainerWarning {
+  item_id: string
+  message: string
+}
+
 export interface PrepGuide {
   raw_prep: RawPrepTask[]
   cook_ahead: CookAheadRecipe[]
+  container_summaries?: ContainerSummary[]
+  container_strategy?: 'ai' | 'heuristic' | 'none'
+  container_warnings?: ContainerWarning[]
 }
 
 export interface GroceryItem {

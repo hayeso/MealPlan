@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useSessionStorageSet } from '../hooks/useSessionStorage'
-import type { PrepGuide } from '../types/api'
+import type { MealPlanOut, PrepGuide } from '../types/api'
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
 export default function PrepGuidePage() {
   const { planId } = useParams<{ planId: string }>()
   const [guide, setGuide] = useState<PrepGuide | null>(null)
+  const [plan, setPlan] = useState<MealPlanOut | null>(null)
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
 
@@ -16,9 +19,14 @@ export default function PrepGuidePage() {
   useEffect(() => {
     if (!planId) return
     setLoading(true)
-    api
-      .get<PrepGuide>(`/meal-plans/${planId}/prep-guide`)
-      .then(setGuide)
+    Promise.all([
+      api.get<PrepGuide>(`/meal-plans/${planId}/prep-guide`),
+      api.get<MealPlanOut>(`/meal-plans/${planId}`),
+    ])
+      .then(([g, p]) => {
+        setGuide(g)
+        setPlan(p)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [planId])
@@ -40,6 +48,102 @@ export default function PrepGuidePage() {
         ← Back to Planner
       </Link>
       <h1 className="font-display text-3xl mt-2 mb-6 text-text">Sunday Prep Guide</h1>
+
+      {guide.container_warnings && guide.container_warnings.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+          <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-300 mb-2">
+            Storage notes
+          </h3>
+          <ul className="text-sm text-text space-y-1 list-disc list-inside">
+            {guide.container_warnings.map((w, i) => (
+              <li key={w.item_id ?? i}>{w.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {guide.container_summaries && guide.container_summaries.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-text">Your Containers</h2>
+            <span className="text-xs text-muted px-2 py-1 rounded-full bg-surface border border-border">
+              {guide.container_strategy === 'ai' ? 'AI optimised' : 'Grouped by cook phase'}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {guide.container_summaries.map(summary => (
+              <div
+                key={summary.container}
+                className="rounded-xl border border-border bg-surface-elevated p-4"
+              >
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <span className="px-2 py-0.5 bg-accent/10 text-accent rounded text-xs font-bold">
+                    {summary.container}
+                  </span>
+                  <span className="text-sm font-medium text-text">{summary.description}</span>
+                  {summary.prep_phase && (
+                    <span className="text-xs text-muted px-2 py-0.5 rounded-full bg-surface border border-border">
+                      {summary.prep_phase}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted mb-2">
+                  {summary.day} · {summary.recipe_name}
+                </p>
+                <p className="text-sm text-text">{summary.ingredients.join(', ')}</p>
+                {summary.storage_rationale && (
+                  <p className="text-xs text-muted mt-2 italic">{summary.storage_rationale}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {plan && (
+        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          {DAYS.map((dayName, idx) => {
+            const slot = plan.slots.find(s => s.day_of_week === idx && s.meal_type === 'dinner')
+            const recipe = slot?.recipe
+            const inBatch = recipe
+              ? guide.raw_prep.some(t => t.portions.some(p => p.recipe_name === recipe.name))
+              : false
+            const inCook = recipe
+              ? guide.cook_ahead.some(c => c.recipe_name === recipe.name)
+              : false
+            return (
+              <div
+                key={dayName}
+                className="rounded-xl border border-border bg-surface-elevated p-3 text-sm"
+              >
+                <div className="font-medium text-text">{dayName}</div>
+                {recipe ? (
+                  <>
+                    <div className="text-muted line-clamp-2 mt-1">{recipe.name}</div>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {inBatch && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-success-bg text-success">
+                          Batch
+                        </span>
+                      )}
+                      {inCook && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-warning-bg text-warning">
+                          Cook ahead
+                        </span>
+                      )}
+                      {!inBatch && !inCook && (
+                        <span className="text-xs text-muted">Cook fresh</span>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-muted mt-1">Empty</div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {guide.raw_prep.length > 0 && (
         <div className="mb-8">

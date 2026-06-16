@@ -5,6 +5,17 @@ import ReviewDraft from '../components/Import/ReviewDraft'
 
 type Tab = 'url' | 'html' | 'photo'
 
+function detectSocialPlatform(url: string): 'tiktok' | 'instagram' | null {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase().replace(/^www\./, '')
+    if (host.includes('tiktok.com')) return 'tiktok'
+    if (host.includes('instagram.com')) return 'instagram'
+  } catch {
+    return null
+  }
+  return null
+}
+
 export default function ImportPage() {
   const [tab, setTab] = useState<Tab>('url')
   const [loading, setLoading] = useState(false)
@@ -318,12 +329,19 @@ export default function ImportPage() {
 
       {tab === 'url' && (
         <div className="space-y-4">
-          <p className="text-sm text-muted">Paste a recipe URL (BBC Good Food or other recipe sites).</p>
+          <p className="text-sm text-muted">
+            Paste a recipe URL, TikTok link, or Instagram reel. Video recipes may need edits after import — check ingredients and steps.
+          </p>
+          {detectSocialPlatform(url) && (
+            <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20">
+              {detectSocialPlatform(url) === 'tiktok' ? 'TikTok' : 'Instagram'}
+            </span>
+          )}
           <input
             type="url"
             value={url}
             onChange={e => setUrl(e.target.value)}
-            placeholder="https://www.bbcgoodfood.com/recipes/..."
+            placeholder="https://www.tiktok.com/... or https://www.instagram.com/reel/..."
             className="w-full px-4 py-3 min-h-[44px] border border-border rounded-xl bg-surface-elevated text-text focus:ring-2 focus:ring-accent/30 focus:border-accent"
           />
           <button
@@ -331,7 +349,11 @@ export default function ImportPage() {
             disabled={loading || !url.trim()}
             className="w-full min-h-[48px] py-3 bg-accent text-white rounded-xl font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Importing...' : 'Import Recipe'}
+            {loading
+              ? detectSocialPlatform(url)
+                ? 'Extracting recipe from video… this can take up to a minute'
+                : 'Importing...'
+              : 'Import Recipe'}
           </button>
         </div>
       )}

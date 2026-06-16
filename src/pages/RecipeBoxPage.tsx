@@ -13,13 +13,22 @@ const MAKE_AHEAD_BADGES: Record<string, { label: string; className: string }> = 
   full: { label: 'Cook Ahead', className: 'bg-accent/10 text-accent' },
 }
 
+const SOURCE_STYLES: Record<string, string> = {
+  TikTok: 'bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-500/20',
+  Instagram: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20',
+  Photo: 'bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/20',
+  'HTML Import': 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20',
+}
+
 function SourceBadge({ source, sourceUrl }: { source: string; sourceUrl: string | null }) {
   const isUrl = source.startsWith('URL') || source === 'URL'
   const label = isUrl ? 'URL' : source
+  const style = SOURCE_STYLES[source] ?? ''
   const className =
-    'text-xs px-2 py-0.5 rounded-full bg-surface text-muted border border-border'
+    `text-xs px-2 py-0.5 rounded-full border border-border ${style || 'bg-surface text-muted'}`
 
-  if (isUrl && sourceUrl) {
+  const linkable = (isUrl || source === 'TikTok' || source === 'Instagram') && sourceUrl
+  if (linkable) {
     return (
       <a
         href={sourceUrl}

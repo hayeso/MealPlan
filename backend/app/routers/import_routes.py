@@ -87,14 +87,31 @@ async def _save_draft(draft: RecipeDraft, db: AsyncSession) -> Recipe:
 
 @router.post("/url", response_model=ImportDraftResponse)
 async def import_from_url(body: ImportURLRequest):
+    from ..services.social_recipe_extractor import (
+        SocialImportError,
+        extract_social_recipe,
+        is_social_url,
+    )
     from ..services.url_scraper import scrape_url
 
-    raw_text = await scrape_url(body.url)
+    platform = is_social_url(body.url)
+    if platform:
+        try:
+            raw_text, source, canonical_url = await extract_social_recipe(body.url)
+        except SocialImportError as exc:
+            raise HTTPException(400, exc.user_message) from exc
+    else:
+        try:
+            raw_text = await scrape_url(body.url)
+        except Exception as exc:
+            raise HTTPException(400, f"Could not fetch URL: {exc}") from exc
+        source = f"URL - {body.url.split('/')[2]}" if "/" in body.url else "URL"
+        canonical_url = body.url
+
     if not raw_text:
         raise HTTPException(400, "Could not extract recipe content from the URL")
-    source = f"URL - {body.url.split('/')[2]}" if "/" in body.url else "URL"
     draft = await parse_recipe_text(raw_text, source=source)
-    draft.source_url = body.url
+    draft.source_url = canonical_url
     return ImportDraftResponse(draft=draft)
 
 
