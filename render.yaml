@@ -28,7 +28,7 @@ services:
       - key: OPENAI_BASE_URL
         value: https://openrouter.ai/api/v1
       - key: CORS_ORIGINS
-        sync: false
+        value: https://mealplan-pt7s.onrender.com
     buildFilter:
       paths:
         - backend/**
